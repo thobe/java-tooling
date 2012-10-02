@@ -1,12 +1,16 @@
 package org.thobe.java.tooling;
 
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.thobe.testing.subprocess.SubprocessTestRunner;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.fail;
 
+@RunWith(SubprocessTestRunner.class)
+@SubprocessTestRunner.SubprocessConfiguration(RunWithToolingAgent.class)
 public class CallFrameTest
 {
     ToolingInterface tools = ToolingInterface.getToolingInterface();

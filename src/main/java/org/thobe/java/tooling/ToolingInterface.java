@@ -1,5 +1,7 @@
 package org.thobe.java.tooling;
 
+import java.io.File;
+import java.lang.UnsatisfiedLinkError;
 import java.lang.reflect.Method;
 import java.net.URL;
 import java.security.Permission;
@@ -18,12 +20,19 @@ public class ToolingInterface
     private static boolean dynlibLoaded = false;
     private final Set<Capability> capabilities;
     private final FrameManager frameManager = new FrameManager();
+    static final String LIB_SEARCH_PATH = ToolingInterface.class.getName() + ".LIB_SEARCH_PATH";
 
     @SuppressWarnings("unused"/*initialized from native code*/)
     private ToolingInterface( int version, Set<Capability> capabilities )
     {
         verifyPermission();
         this.capabilities = capabilities;
+    }
+
+    @Override
+    public String toString()
+    {
+        return "ToolingInterface" + capabilities;
     }
 
     public static synchronized ToolingInterface getToolingInterface() throws SecurityException
@@ -40,7 +49,7 @@ public class ToolingInterface
                     throw new IllegalStateException( "Failed to initialize ToolingInterface." );
                 }
             }
-            catch ( java.lang.UnsatisfiedLinkError error )
+            catch ( UnsatisfiedLinkError error )
             { // the library was not loaded as an agent, load it as a regular dynamic library
                 System.load( dynlib() );
             }
@@ -66,6 +75,15 @@ public class ToolingInterface
         URL resource = ToolingInterface.class.getResource( '/' + lib );
         if ( resource == null )
         {
+            String path = System.getProperty( LIB_SEARCH_PATH, null );
+            if ( path != null )
+            {
+                File file = new File( path, lib );
+                if ( file.isFile() )
+                {
+                    return file.getAbsolutePath();
+                }
+            }
             throw new IllegalStateException( "Cannot locate native library: " + lib );
         }
         // TODO: if the library is in a jar, copy it to a temporary location where it can be loaded
