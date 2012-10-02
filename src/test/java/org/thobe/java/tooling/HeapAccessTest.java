@@ -13,9 +13,6 @@ import static org.junit.Assert.assertTrue;
 public class HeapAccessTest
 {
     private ToolingInterface tools = ToolingInterface.getToolingInterface();
-    {
-        System.out.println(tools);
-    }
 
     @Test
     public void shouldAccessAllLiveInstancesOfGivenClass() throws Exception
@@ -44,7 +41,7 @@ public class HeapAccessTest
         Runnable[] instances = tools.getLiveInstancesOf( Runnable.class );
 
         // then
-        assertTrue( "size=" + instances.length, instances.length != 0 );
+        assertTrue( "instances of Runnable, count=" + instances.length, instances.length != 0 );
         boolean found = false;
         for ( Runnable instance : instances )
         {
