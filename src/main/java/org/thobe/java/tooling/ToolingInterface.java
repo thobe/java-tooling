@@ -1,6 +1,10 @@
 package org.thobe.java.tooling;
 
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.lang.UnsatisfiedLinkError;
 import java.lang.reflect.Method;
 import java.net.URL;
@@ -86,8 +90,41 @@ public class ToolingInterface
             }
             throw new IllegalStateException( "Cannot locate native library: " + lib );
         }
-        // TODO: if the library is in a jar, copy it to a temporary location where it can be loaded
-        return resource.getPath();
+        String path = resource.getPath();
+        if ( !new File( path ).isFile() )
+        {
+            try
+            {
+                File dest = File.createTempFile( ToolingInterface.class.getName(), lib );
+                InputStream in = resource.openStream();
+                try
+                {
+                    OutputStream out = new FileOutputStream( dest );
+                    try
+                    {
+                        byte[] block = new byte[4096];
+                        for (int read; -1 != (read = in.read( block ));)
+                        {
+                            out.write( block, 0, read );
+                        }
+                    }
+                    finally
+                    {
+                        out.close();
+                    }
+                }
+                finally
+                {
+                    in.close();
+                }
+                path = dest.getAbsolutePath();
+            }
+            catch ( IOException e )
+            {
+                throw new IllegalStateException( "Cannot create temp file for native library." );
+            }
+        }
+        return path;
     }
 
     private static native ToolingInterface initialize0( Set<Capability> capabilities );
