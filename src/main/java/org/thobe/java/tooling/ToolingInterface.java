@@ -178,6 +178,7 @@ public class ToolingInterface
     native void setLocal( Thread thread, Method method, int height, long start, int length, int slot, char type,
                           Object value );
 
+    @SuppressWarnings("unused"/*called from native code*/)
     CallFrame createFrame( Thread thread, Method method, int height, Object that, long position,
                            LocalVariable[] variables, Object[] detachedValues/*null if frame is live*/ )
     {
@@ -197,11 +198,13 @@ public class ToolingInterface
         return frame;
     }
 
+    @SuppressWarnings("unused"/*called from native code*/)
     LocalVariable createLocal( long start, int length, String signature, int slot, String name )
     {
         return new LocalVariable( start, length, signature, slot, name );
     }
 
+    @SuppressWarnings("unused"/*called from native code*/)
     void popFrame( Thread thread, int height, long position, Object[] locals )
     {
         CallFrame frame = frameManager.popFrame( thread, height );
@@ -248,81 +251,97 @@ public class ToolingInterface
         }
     }
 
+    @SuppressWarnings("unused"/*called from native code*/)
     Object boxBool( boolean value )
     {
         return value;
     }
 
+    @SuppressWarnings("unused"/*called from native code*/)
     boolean unboxBool( Boolean value )
     {
         return value;
     }
 
+    @SuppressWarnings("unused"/*called from native code*/)
     Object boxByte( byte value )
     {
         return value;
     }
 
+    @SuppressWarnings("unused"/*called from native code*/)
     byte unboxByte( Byte value )
     {
         return value;
     }
 
+    @SuppressWarnings("unused"/*called from native code*/)
     Object boxChar( char value )
     {
         return value;
     }
 
+    @SuppressWarnings("unused"/*called from native code*/)
     char unboxChar( Character value )
     {
         return value;
     }
 
+    @SuppressWarnings("unused"/*called from native code*/)
     Object boxShort( short value )
     {
         return value;
     }
 
+    @SuppressWarnings("unused"/*called from native code*/)
     short unboxShort( Short value )
     {
         return value;
     }
 
+    @SuppressWarnings("unused"/*called from native code*/)
     Object boxInt( int value )
     {
         return value;
     }
 
+    @SuppressWarnings("unused"/*called from native code*/)
     int unboxInt( Integer value )
     {
         return value;
     }
 
+    @SuppressWarnings("unused"/*called from native code*/)
     Object boxLong( long value )
     {
         return value;
     }
 
+    @SuppressWarnings("unused"/*called from native code*/)
     long unboxLong( Long value )
     {
         return value;
     }
 
+    @SuppressWarnings("unused"/*called from native code*/)
     Object boxFloat( float value )
     {
         return value;
     }
 
+    @SuppressWarnings("unused"/*called from native code*/)
     float unboxFloat( Float value )
     {
         return value;
     }
 
+    @SuppressWarnings("unused"/*called from native code*/)
     Object boxDouble( double value )
     {
         return value;
     }
 
+    @SuppressWarnings("unused"/*called from native code*/)
     double unboxDouble( Double value )
     {
         return value;

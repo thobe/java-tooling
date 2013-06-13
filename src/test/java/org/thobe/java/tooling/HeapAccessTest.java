@@ -6,6 +6,7 @@ import org.junit.runners.model.Statement;
 import org.thobe.testing.subprocess.SubprocessTestRunner;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 @RunWith(SubprocessTestRunner.class)
@@ -22,7 +23,7 @@ public class HeapAccessTest
 
         // then
         assertEquals( 1, instances.length );
-        assertEquals( this, instances[0] );
+        assertSame( this, instances[0] );
     }
 
     @Test
