@@ -5,7 +5,6 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.lang.UnsatisfiedLinkError;
 import java.lang.reflect.Method;
 import java.net.URL;
 import java.security.Permission;
@@ -103,7 +102,7 @@ public class ToolingInterface
                     try
                     {
                         byte[] block = new byte[4096];
-                        for (int read; -1 != (read = in.read( block ));)
+                        for ( int read; -1 != (read = in.read( block )); )
                         {
                             out.write( block, 0, read );
                         }
@@ -258,9 +257,9 @@ public class ToolingInterface
     }
 
     @SuppressWarnings("unused"/*called from native code*/)
-    boolean unboxBool( Boolean value )
+    boolean unboxBool( Object value )
     {
-        return value;
+        return unbox( Boolean.class, value );
     }
 
     @SuppressWarnings("unused"/*called from native code*/)
@@ -270,9 +269,9 @@ public class ToolingInterface
     }
 
     @SuppressWarnings("unused"/*called from native code*/)
-    byte unboxByte( Byte value )
+    byte unboxByte( Object value )
     {
-        return value;
+        return unbox( Byte.class, value );
     }
 
     @SuppressWarnings("unused"/*called from native code*/)
@@ -282,9 +281,9 @@ public class ToolingInterface
     }
 
     @SuppressWarnings("unused"/*called from native code*/)
-    char unboxChar( Character value )
+    char unboxChar( Object value )
     {
-        return value;
+        return unbox( Character.class, value );
     }
 
     @SuppressWarnings("unused"/*called from native code*/)
@@ -294,9 +293,9 @@ public class ToolingInterface
     }
 
     @SuppressWarnings("unused"/*called from native code*/)
-    short unboxShort( Short value )
+    short unboxShort( Object value )
     {
-        return value;
+        return unbox( Short.class, value );
     }
 
     @SuppressWarnings("unused"/*called from native code*/)
@@ -306,9 +305,9 @@ public class ToolingInterface
     }
 
     @SuppressWarnings("unused"/*called from native code*/)
-    int unboxInt( Integer value )
+    int unboxInt( Object value )
     {
-        return value;
+        return unbox( Integer.class, value );
     }
 
     @SuppressWarnings("unused"/*called from native code*/)
@@ -318,9 +317,9 @@ public class ToolingInterface
     }
 
     @SuppressWarnings("unused"/*called from native code*/)
-    long unboxLong( Long value )
+    long unboxLong( Object value )
     {
-        return value;
+        return unbox( Long.class, value );
     }
 
     @SuppressWarnings("unused"/*called from native code*/)
@@ -330,9 +329,9 @@ public class ToolingInterface
     }
 
     @SuppressWarnings("unused"/*called from native code*/)
-    float unboxFloat( Float value )
+    float unboxFloat( Object value )
     {
-        return value;
+        return unbox( Float.class, value );
     }
 
     @SuppressWarnings("unused"/*called from native code*/)
@@ -342,8 +341,21 @@ public class ToolingInterface
     }
 
     @SuppressWarnings("unused"/*called from native code*/)
-    double unboxDouble( Double value )
+    double unboxDouble( Object value )
     {
-        return value;
+        return unbox( Double.class, value );
+    }
+
+    private static <T> T unbox( Class<T> type, Object value )
+    {
+        if ( type.isInstance( value ) )
+        {
+            return type.cast( value );
+        }
+        if ( value == null )
+        {
+            throw  new NullPointerException();
+        }
+        throw  new ClassCastException( type.getName() );
     }
 }

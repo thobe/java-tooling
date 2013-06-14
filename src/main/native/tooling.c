@@ -126,42 +126,42 @@ jboolean InitializeJNI(JNIEnv *env, jclass tools) {
 
   // unboxing methods
   if (!agent->unboxLong) {
-    m = (*env)->GetMethodID(env, tools, "unboxLong", "(Ljava/lang/Long;)J");
+    m = (*env)->GetMethodID(env, tools, "unboxLong", "(Ljava/lang/Object;)J");
     if (!m) return JNI_FALSE;
     agent->unboxLong = m;
   }
   if (!agent->unboxFloat) {
-    m = (*env)->GetMethodID(env, tools, "unboxFloat", "(Ljava/lang/Float;)F");
+    m = (*env)->GetMethodID(env, tools, "unboxFloat", "(Ljava/lang/Object;)F");
     if (!m) return JNI_FALSE;
     agent->unboxFloat = m;
   }
   if (!agent->unboxDouble) {
-    m = (*env)->GetMethodID(env, tools, "unboxDouble", "(Ljava/lang/Double;)D");
+    m = (*env)->GetMethodID(env, tools, "unboxDouble", "(Ljava/lang/Object;)D");
     if (!m) return JNI_FALSE;
     agent->unboxDouble = m;
   }
   if (!agent->unboxInt) {
-    m = (*env)->GetMethodID(env, tools, "unboxInt", "(Ljava/lang/Integer;)I");
+    m = (*env)->GetMethodID(env, tools, "unboxInt", "(Ljava/lang/Object;)I");
     if (!m) return JNI_FALSE;
     agent->unboxInt = m;
   }
   if (!agent->unboxShort) {
-    m = (*env)->GetMethodID(env, tools, "unboxShort", "(Ljava/lang/Short;)S");
+    m = (*env)->GetMethodID(env, tools, "unboxShort", "(Ljava/lang/Object;)S");
     if (!m) return JNI_FALSE;
     agent->unboxShort = m;
   }
   if (!agent->unboxChar) {
-    m = (*env)->GetMethodID(env, tools, "unboxChar","(Ljava/lang/Character;)C");
+    m = (*env)->GetMethodID(env, tools, "unboxChar","(Ljava/lang/Object;)C");
     if (!m) return JNI_FALSE;
     agent->unboxChar = m;
   }
   if (!agent->unboxByte) {
-    m = (*env)->GetMethodID(env, tools, "unboxByte", "(Ljava/lang/Byte;)B");
+    m = (*env)->GetMethodID(env, tools, "unboxByte", "(Ljava/lang/Object;)B");
     if (!m) return JNI_FALSE;
     agent->unboxByte = m;
   }
   if (!agent->unboxBool) {
-    m = (*env)->GetMethodID(env, tools, "unboxBool", "(Ljava/lang/Boolean;)Z");
+    m = (*env)->GetMethodID(env, tools, "unboxBool", "(Ljava/lang/Object;)Z");
     if (!m) return JNI_FALSE;
     agent->unboxBool = m;
   }
@@ -169,19 +169,19 @@ jboolean InitializeJNI(JNIEnv *env, jclass tools) {
   return JNI_TRUE;
 }
 
-jint throwException(JNIEnv *env, const char *name, const char *msg, ...) {
+jint throwException(JNIEnv *env, const char *name, const char *format, ...) {
   jclass clazz;
-  char buffer[128];
+  char message[128];
   va_list args;
 
-  va_start(args, msg);
+  va_start(args, format);
   {
-    sprintf(buffer, msg, args);
+    vsprintf(message, format, args);
   }
   va_end(args);
 
   clazz = (*env)->FindClass(env, name);
-  return (*env)->ThrowNew(env, clazz, msg);
+  return (*env)->ThrowNew(env, clazz, message);
 }
 
 jboolean verifyTool(JNIEnv *env, jobject tools) {
@@ -194,10 +194,75 @@ jboolean verifyTool(JNIEnv *env, jobject tools) {
   }
 }
 
+#define decodes(CASE) case CASE: return #CASE
+const char* decodeErrorCode(jvmtiError tiErr) {
+  switch(tiErr) {
+    decodes(JVMTI_ERROR_NONE);
+    decodes(JVMTI_ERROR_INVALID_THREAD);
+    decodes(JVMTI_ERROR_INVALID_THREAD_GROUP);
+    decodes(JVMTI_ERROR_INVALID_PRIORITY);
+    decodes(JVMTI_ERROR_THREAD_NOT_SUSPENDED);
+    decodes(JVMTI_ERROR_THREAD_SUSPENDED);
+    decodes(JVMTI_ERROR_THREAD_NOT_ALIVE);
+    decodes(JVMTI_ERROR_INVALID_OBJECT);
+    decodes(JVMTI_ERROR_INVALID_CLASS);
+    decodes(JVMTI_ERROR_CLASS_NOT_PREPARED);
+    decodes(JVMTI_ERROR_INVALID_METHODID);
+    decodes(JVMTI_ERROR_INVALID_LOCATION);
+    decodes(JVMTI_ERROR_INVALID_FIELDID);
+    decodes(JVMTI_ERROR_NO_MORE_FRAMES);
+    decodes(JVMTI_ERROR_OPAQUE_FRAME);
+    decodes(JVMTI_ERROR_TYPE_MISMATCH);
+    decodes(JVMTI_ERROR_INVALID_SLOT);
+    decodes(JVMTI_ERROR_DUPLICATE);
+    decodes(JVMTI_ERROR_NOT_FOUND);
+    decodes(JVMTI_ERROR_INVALID_MONITOR);
+    decodes(JVMTI_ERROR_NOT_MONITOR_OWNER);
+    decodes(JVMTI_ERROR_INTERRUPT);
+    decodes(JVMTI_ERROR_INVALID_CLASS_FORMAT);
+    decodes(JVMTI_ERROR_CIRCULAR_CLASS_DEFINITION);
+    decodes(JVMTI_ERROR_FAILS_VERIFICATION);
+    decodes(JVMTI_ERROR_UNSUPPORTED_REDEFINITION_METHOD_ADDED);
+    decodes(JVMTI_ERROR_UNSUPPORTED_REDEFINITION_SCHEMA_CHANGED);
+    decodes(JVMTI_ERROR_INVALID_TYPESTATE);
+    decodes(JVMTI_ERROR_UNSUPPORTED_REDEFINITION_HIERARCHY_CHANGED);
+    decodes(JVMTI_ERROR_UNSUPPORTED_REDEFINITION_METHOD_DELETED);
+    decodes(JVMTI_ERROR_UNSUPPORTED_VERSION);
+    decodes(JVMTI_ERROR_NAMES_DONT_MATCH);
+    decodes(JVMTI_ERROR_UNSUPPORTED_REDEFINITION_CLASS_MODIFIERS_CHANGED);
+    decodes(JVMTI_ERROR_UNSUPPORTED_REDEFINITION_METHOD_MODIFIERS_CHANGED);
+    decodes(JVMTI_ERROR_UNMODIFIABLE_CLASS);
+    decodes(JVMTI_ERROR_NOT_AVAILABLE);
+    decodes(JVMTI_ERROR_MUST_POSSESS_CAPABILITY);
+    decodes(JVMTI_ERROR_NULL_POINTER);
+    decodes(JVMTI_ERROR_ABSENT_INFORMATION);
+    decodes(JVMTI_ERROR_INVALID_EVENT_TYPE);
+    decodes(JVMTI_ERROR_ILLEGAL_ARGUMENT);
+    decodes(JVMTI_ERROR_NATIVE_METHOD);
+    decodes(JVMTI_ERROR_CLASS_LOADER_UNSUPPORTED);
+    decodes(JVMTI_ERROR_OUT_OF_MEMORY);
+    decodes(JVMTI_ERROR_ACCESS_DENIED);
+    decodes(JVMTI_ERROR_WRONG_PHASE);
+    decodes(JVMTI_ERROR_INTERNAL);
+    decodes(JVMTI_ERROR_UNATTACHED_THREAD);
+    decodes(JVMTI_ERROR_INVALID_ENVIRONMENT);
+  default:
+    return 0;
+  }
+}
+
 jint throwJvmtiException(JNIEnv *env, const char *tiMethod, jvmtiError tiErr) {
-  return throwException(env, "java/lang/Error",
-			"Unexpexted JVMTI failure in %s, error code: 0x%x.",
-			tiMethod, tiErr);
+  const char *err;
+  err = decodeErrorCode(tiErr);
+  if (err) {
+    return throwException(env, "java/lang/Error",
+			  "Unexpected JVMTI failure in %s: %s.",
+			  tiMethod, err);
+  } else {
+    return throwException(env, "java/lang/Error",
+			  "Unexpected JVMTI failure in %s, error code: 0x%x.",
+			  tiMethod, tiErr);
+  }
 }
 
 jobject createLocal(JNIEnv *env, jobject tools, jvmtiLocalVariableEntry entry) {
@@ -293,7 +358,7 @@ jobject getLocal(JNIEnv *env,jthread thread,jchar type,jint depth,jint slot) {
   case 'Z': // boolean
     result = (*env)->CallObjectMethod(env,agent->tools,agent->boxBool,iValue);
     break;
-  }  
+  }
 
   return result;
 }
@@ -327,8 +392,11 @@ jobjectArray getAllLocals(JNIEnv *env, jthread thread, jint depth,
       if ((*env)->ExceptionCheck(env)) {
 	return NULL;
       }
-      (*env)->SetObjectArrayElement(env, result, i, local);
+      (*env)->SetObjectArrayElement(env, result, locals[i].slot, local);
       (*env)->DeleteLocalRef(env, local);
+      if ((*env)->ExceptionCheck(env)) {
+	return NULL;
+      }
     }
   }
 
@@ -837,44 +905,45 @@ void setLocal(JNIEnv *env, jthread thread, jchar type, jint depth, jint slot,
   case 'L': // Object
     tiErr = (*(agent->jvmti))->SetLocalObject(agent->jvmti, thread,
 					      depth, slot, value);
+    if (tiErr == JVMTI_ERROR_TYPE_MISMATCH) {
+      throwException(env,"java/lang/ClassCastException","");
+      return;
+    }
     break;
   case 'J': // long
     jValue = (*env)->CallLongMethod(env,agent->tools,agent->unboxLong,value);
+    if ((*env)->ExceptionCheck(env)) return; // unboxing could throw NPE
     tiErr = (*(agent->jvmti))->SetLocalLong(agent->jvmti, thread,
 					    depth, slot, jValue);
     break;
   case 'F': // float
     fValue = (*env)->CallFloatMethod(env,agent->tools,agent->unboxFloat,value);
+    if ((*env)->ExceptionCheck(env)) return; // unboxing could throw NPE
     tiErr = (*(agent->jvmti))->SetLocalFloat(agent->jvmti, thread,
 					     depth, slot, fValue);
     break;
   case 'D': // double
     dValue=(*env)->CallDoubleMethod(env,agent->tools,agent->unboxDouble,value);
+    if ((*env)->ExceptionCheck(env)) return; // unboxing could throw NPE
     tiErr = (*(agent->jvmti))->SetLocalDouble(agent->jvmti, thread,
 					      depth, slot, dValue);
     break;
   case 'I': // int
     iValue = (*env)->CallIntMethod(env,agent->tools,agent->unboxInt,value);
-    tiErr = (*(agent->jvmti))->SetLocalInt(agent->jvmti, thread,
-					   depth, slot, iValue);
-    break;
+    goto SET_LOCAL_INT;
   case 'S': // short
     iValue = (*env)->CallShortMethod(env,agent->tools,agent->unboxShort,value);
-    tiErr = (*(agent->jvmti))->SetLocalInt(agent->jvmti, thread,
-					   depth, slot, iValue);
-    break;
+    goto SET_LOCAL_INT;
   case 'C': // char
     iValue = (*env)->CallCharMethod(env,agent->tools,agent->unboxChar,value);
-    tiErr = (*(agent->jvmti))->SetLocalInt(agent->jvmti, thread,
-					   depth, slot, iValue);
-    break;
+    goto SET_LOCAL_INT;
   case 'B': // byte
     iValue = (*env)->CallByteMethod(env,agent->tools,agent->unboxByte,value);
-    tiErr = (*(agent->jvmti))->SetLocalInt(agent->jvmti, thread,
-					   depth, slot, iValue);
-    break;
+    goto SET_LOCAL_INT;
   case 'Z': // boolean
     iValue = (*env)->CallBooleanMethod(env,agent->tools,agent->unboxBool,value);
+  SET_LOCAL_INT:
+    if ((*env)->ExceptionCheck(env)) return; // unboxing could throw NPE
     tiErr = (*(agent->jvmti))->SetLocalInt(agent->jvmti, thread,
 					   depth, slot, iValue);
     break;

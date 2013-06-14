@@ -69,7 +69,7 @@ public final class CallFrame
         throw new IllegalArgumentException( String.format( "No such local variable: '%s'.", name ) );
     }
 
-    public void setLocal( String name, String value )
+    public void setLocal( String name, Object value )
     {
         if ( name == null )
         {
@@ -88,8 +88,26 @@ public final class CallFrame
                 {
                     if ( locals == null )
                     { // this frame is live, we can set the value in the underlying frame
-                        tools.setLocal( thread, method, height, variable.start, variable.length, variable.slot,
-                                        variable.signature.charAt( 0 ), value );
+                        try
+                        {
+                            tools.setLocal( thread, method, height, variable.start, variable.length, variable.slot,
+                                            variable.signature.charAt( 0 ), value );
+                        }
+                        catch ( NullPointerException e )
+                        {
+                            throw new NullPointerException( name );
+                        }
+                        catch ( ClassCastException e )
+                        {
+                            String type = e.getMessage();
+                            if ( type == null || type.isEmpty() )
+                            {
+                                type = variable.signature.substring( 1, variable.signature.length() - 1 )
+                                               .replace( '/', '.' );
+                            }
+                            throw new ClassCastException( '"' + name + "\" may not be " + value.getClass().getName() +
+                                                          ", must be instance of " + type );
+                        }
                     }
                     else
                     {
