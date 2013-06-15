@@ -1,9 +1,13 @@
 package org.thobe.java.tooling;
 
 import java.lang.reflect.Method;
+import java.util.NoSuchElementException;
+
+import static java.lang.String.format;
 
 public final class CallFrame
 {
+    private static final Object[] NO_OBJECTS = new Object[0];
     private final ToolingInterface tools;
     final Thread thread;
     private final Method method;
@@ -34,8 +38,9 @@ public final class CallFrame
         if ( variables == null )
         {
             throw new UnsupportedOperationException(
-                    String.format( "Cannot access local variables of %s, variable table not available.", this ) );
+                    format( "Cannot access local variables of %s, variable table not available.", this ) );
         }
+        String notInRange = null;
         for ( LocalVariable variable : variables )
         {
             if ( name.equals( variable.name ) )
@@ -44,29 +49,41 @@ public final class CallFrame
                 {
                     if ( locals == null )
                     { // this frame is live, get the value from the underlying frame
-                        return tools.getLocal( thread, method, height, variable.start, variable.length,
-                                               variable.slot, variable.signature.charAt( 0 ) );
+                        try
+                        {
+                            return tools.getLocal( thread, method, height, variable.start, variable.length,
+                                                   variable.slot, variable.signature.charAt( 0 ) );
+                        }
+                        catch ( LocalNotInRangeException e )
+                        {
+                            notInRange = e.getMessage();
+                        }
                     }
                     else
                     { // this frame has been detached, get the value from the table
                         if ( position < variable.start || position > (variable.start + variable.length) )
                         {
-                            throw new IllegalStateException(
-                                    String.format( "Local variable '%s' is out of range [%d-%d], current position: %d.",
-                                                   name, variable.start, variable.start + variable.length, position ) );
+                            notInRange = format( "[%d-%d] (position in frame: %d).",
+                                                 variable.start, variable.start + variable.length, position );
                         }
                         else if ( variable.slot >= locals.length )
                         {
-                            throw new IllegalStateException( String.format(
+                            throw new IllegalStateException( format(
                                     "The slot [%d] for the local variable '%s' has not been captured (%d captured).",
                                     variable.slot, name, locals.length ) );
                         }
-                        return locals[variable.slot];
+                        else
+                        {
+                            return locals[variable.slot];
+                        }
                     }
                 }
             }
         }
-        throw new IllegalArgumentException( String.format( "No such local variable: '%s'.", name ) );
+        throw new NoSuchElementException(
+                format( notInRange == null ? "No such local variable: '%s'."
+                                           : "The local variable '%s' is out of range " + notInRange,
+                        name ) );
     }
 
     public void setLocal( String name, Object value )
@@ -78,7 +95,7 @@ public final class CallFrame
         if ( variables == null )
         {
             throw new UnsupportedOperationException(
-                    String.format( "Cannot access local variables of %s, variable table not available.", this ) );
+                    format( "Cannot access local variables of %s, variable table not available.", this ) );
         }
         for ( LocalVariable variable : variables )
         {
@@ -126,6 +143,6 @@ public final class CallFrame
     synchronized void detach( long position, Object[] locals )
     {
         this.position = position;
-        this.locals = locals;
+        this.locals = locals == null ? NO_OBJECTS : locals;
     }
 }

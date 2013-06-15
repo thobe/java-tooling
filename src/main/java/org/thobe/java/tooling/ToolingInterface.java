@@ -172,7 +172,8 @@ public class ToolingInterface
 
     private native CallFrame getCallFrame0( Thread thread, int depth, boolean locals, boolean live );
 
-    native Object getLocal( Thread thread, Method method, int height, long start, int length, int slot, char type );
+    native Object getLocal( Thread thread, Method method, int height, long start, int length, int slot, char type )
+            throws LocalNotInRangeException;
 
     native void setLocal( Thread thread, Method method, int height, long start, int length, int slot, char type,
                           Object value );
@@ -354,8 +355,8 @@ public class ToolingInterface
         }
         if ( value == null )
         {
-            throw  new NullPointerException();
+            throw new NullPointerException();
         }
-        throw  new ClassCastException( type.getName() );
+        throw new ClassCastException( type.getName() );
     }
 }

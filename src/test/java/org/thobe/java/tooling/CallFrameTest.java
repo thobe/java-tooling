@@ -1,5 +1,7 @@
 package org.thobe.java.tooling;
 
+import java.util.NoSuchElementException;
+
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.thobe.testing.subprocess.SubprocessTestRunner;
@@ -15,6 +17,30 @@ import static org.junit.Assert.fail;
 public class CallFrameTest
 {
     ToolingInterface tools = ToolingInterface.getToolingInterface();
+
+    @Test
+    public void shouldBeAbleToDetachFrameWithNullLocals() throws Exception
+    {
+        // given
+        CallFrame frame = new CallFrame( null, Thread.currentThread(), null, 0, null, new LocalVariable[]{
+                new LocalVariable( 0, 5, "Ljava/lang/String;", 0, "foo" )} );
+
+        // when
+        frame.detach( 2, null );
+
+        // then
+        try
+        {
+            frame.getLocal( "foo" );
+
+            fail( "expected exception" );
+        }
+        catch ( IllegalStateException e )
+        {
+            assertEquals( "The slot [0] for the local variable 'foo' has not been captured (0 captured).",
+                          e.getMessage() );
+        }
+    }
 
     @Test
     public void shouldAccessLiveCallFrameOfCurrentMethod() throws Exception
@@ -162,6 +188,107 @@ public class CallFrameTest
     }
 
     @Test
+    public void shouldThrowNoSuchElementExceptionWhenAccessingNonExistingLocalVariableOnLiveFrame() throws Exception
+    {
+        // given
+        CallFrame frame = tools.getCallFrame( 0 );
+
+        // when
+        try
+        {
+            frame.getLocal( "foo" );
+
+            fail( "expected exception" );
+        }
+        // then
+        catch ( NoSuchElementException e )
+        {
+            assertEquals( "No such local variable: 'foo'.", e.getMessage() );
+        }
+    }
+
+    @Test
+    public void shouldThrowNoSuchElementExceptionWhenAccessingNonExistingLocalVariableOnDetachedFrame() throws Exception
+    {
+        // given
+        CallFrame frame = method( "stuff" );
+
+        // when
+        try
+        {
+            frame.getLocal( "foo" );
+
+            fail( "expected exception" );
+        }
+        // then
+        catch ( NoSuchElementException e )
+        {
+            assertEquals( "No such local variable: 'foo'.", e.getMessage() );
+        }
+    }
+
+    @Test
+    public void shouldHandleEquivalentNamesInDifferentScopesOnLiveFrame() throws Exception
+    {
+        // given
+        CallFrame frame = tools.getCallFrame( 0 );
+
+        // when/then
+        for ( int i = 0; i < 3; i++ )
+        {
+            assertEquals( i, frame.getLocal( "i" ) );
+        }
+        // when/then
+        for ( int j = 0; j < 3; j++ )
+        {
+            String i = doNotInline( "" + j );
+            assertEquals( i, frame.getLocal( "i" ) );
+        }
+        // when
+        try
+        {
+            frame.getLocal( "i" );
+
+            fail( "expected exception" );
+        }
+        // then
+        catch ( NoSuchElementException e )
+        {
+            assertEquals( "The local variable 'i' is out of range [68-78] (position in frame: 87).", e.getMessage() );
+        }
+    }
+
+    @Test
+    public void shouldHandleEquivalentNamesInDifferentScopesOnDetachedFrame() throws Exception
+    {
+        // given
+        CallFrame frame = method( "foo" );
+        // when
+        Object i = frame.getLocal( "i" );
+        // then
+        assertEquals( "0", i );
+    }
+
+    @Test
+    public void shouldThrowNoSuchElementExceptionWhenAccessingLocalNotInRangeOnDetachedFrame() throws Exception
+    {
+        // given
+        CallFrame frame = method( "foo" );
+        // when
+        try
+        {
+            frame.getLocal( "notInRange" );
+
+            fail( "expected exception" );
+        }
+        // then
+        catch ( NoSuchElementException e )
+        {
+            assertEquals( "The local variable 'notInRange' is out of range [40-44] (position in frame: 101).", e.getMessage() );
+        }
+    }
+
+    @Test
     public void shouldThrowExceptionWhenAttemptingToSetLocalVariablesOnDetachedFrame() throws Exception
     {
         // given
@@ -266,6 +393,19 @@ public class CallFrameTest
     private CallFrame method( String value )
     {
         assertNotNull( value );
+        for ( int i = 0; i < value.length(); i++ )
+        {
+            String notInRange = doNotInline( "" + i );
+            assertNotNull( notInRange );
+        }
+        for ( int j = 0; j < value.length(); j++ )
+        {
+            String i = doNotInline( "" + j );
+            if ( !i.isEmpty() )
+            {
+                return tools.getCallFrame( 0 );
+            }
+        }
         return tools.getCallFrame( 0 );
     }
 

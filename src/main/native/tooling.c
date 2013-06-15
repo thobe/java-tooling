@@ -247,8 +247,20 @@ const char* decodeErrorCode(jvmtiError tiErr) {
     decodes(JVMTI_ERROR_UNATTACHED_THREAD);
     decodes(JVMTI_ERROR_INVALID_ENVIRONMENT);
   default:
-    return 0;
+    return NULL;
   }
+}
+
+void logError(const char *where, const char *what, jvmtiError tiErr)
+{
+  const char *err;
+  err = decodeErrorCode(tiErr);
+  if (err)
+    fprintf(stderr, "AGENT ERROR: %s, JVMTI error in %s: %s\n",
+                                  where,             what,err);
+  else
+    fprintf(stderr, "AGENT ERROR: %s, JVMTI error in %s, code: 0x%x\n",
+                                  where,             what,     tiErr);
 }
 
 jint throwJvmtiException(JNIEnv *env, const char *tiMethod, jvmtiError tiErr) {
@@ -521,35 +533,34 @@ OnFramePop(jvmtiEnv *jvmti, JNIEnv* env, jthread thread, jmethodID method,
   jvmtiError tiErr;
   jint height;
   jmethodID found;
-  jlocation location;
+  jlocation location = -1;
   jvmtiLocalVariableEntry *locals;
   jint count;
-  jobjectArray result;
+  jobjectArray result = NULL;
 
   tiErr = (*jvmti)->GetFrameCount(jvmti, thread, &height);
   if (tiErr != JVMTI_ERROR_NONE) {
-    fprintf(stderr, "AGENT ERROR: On FramePop, failed to get frame count, JVMTI error code: 0x%x\n", tiErr);
+    logError("OnFramePop", "GetFrameCount", tiErr);
   } else {
     tiErr = (*(agent->jvmti))->GetFrameLocation(agent->jvmti, thread, 0,
                                                 &found, &location);
     if (tiErr != JVMTI_ERROR_NONE || method != found) {
-      fprintf(stderr,"AGENT ERROR: On frame pop, failed to get frame location, JVMTI error code: 0x%x\n",tiErr);
+      logError("OnFramePop", "GetFrameLocation", tiErr);
     } else {
       tiErr = (*(agent->jvmti))->GetLocalVariableTable(agent->jvmti, method,
                                                        &count, &locals);
       if (tiErr != JVMTI_ERROR_NONE) {
-        fprintf(stderr,"AGENT ERROR: On frame pop, failed to get local variable table, JVMTI error code: 0x%x\n",tiErr);
+	logError("OnFramePop", "GetLocalVariableTable", tiErr);
       } else {
         result = getAllLocals(env, thread, 0, location, count, locals);
 	if (!result) { // There was an exception, log and swallow
 	  (*env)->ExceptionDescribe(env);
 	  (*env)->ExceptionClear(env);
-	  result = (*env)->NewObjectArray(env, 0, agent->Object, NULL);
 	}
-        (*env)->CallVoidMethod(env, agent->tools, agent->popFrame,
-                               thread, height, location, result);
       }
     }
+    (*env)->CallVoidMethod(env, agent->tools, agent->popFrame,
+			   thread, height, location, result);
   }
 }
 
@@ -605,20 +616,20 @@ jboolean InitializeAgent(JavaVM *jvm) {
 	}
       }
       if (err != JVMTI_ERROR_NONE) {
-	fprintf(stderr, "AGENT ERROR: On capability setup, JVMTI error code: 0x%x\n", err);
+	logError("InitializeAgent","capability setup", err);
       } else {
 	callbacks.FramePop = &OnFramePop;
 	err = (*(agent->jvmti))->SetEventCallbacks(agent->jvmti, &callbacks,
 						   sizeof(callbacks));
 	if (err != JVMTI_ERROR_NONE) {
-	  fprintf(stderr, "AGENT ERROR: On SetEventCallbacks, JVMTI error code: 0x%x\n", err);
+	  logError("InitializeAgent", "SetEventCallbacks", err);
 	} else if (available.can_generate_frame_pop_events) {
 	  err=(*(agent->jvmti))->SetEventNotificationMode(agent->jvmti,
 							  JVMTI_ENABLE,
 							  JVMTI_EVENT_FRAME_POP,
 							  NULL);
 	  if (err != JVMTI_ERROR_NONE) {
-	    fprintf(stderr, "AGENT ERROR: On enabling FramePop events, JVMTI error code: 0x%x\n", err);
+	    logError("InitializeAgent", "SetEventNotificationMode", err);
 	  }
 	}
       }
@@ -741,8 +752,7 @@ Java_org_thobe_java_tooling_ToolingInterface_initialize0
 
   } else {
 
-    factory = (*env)->GetStaticMethodID(env, tooling, "verifyPermission",
-					"()V");
+    factory = (*env)->GetStaticMethodID(env,tooling,"verifyPermission","()V");
     (*env)->CallStaticVoidMethod(env, tooling, factory);
     if ((*env)->ExceptionCheck(env)) return NULL;
     instance = agent->tools;
@@ -867,8 +877,8 @@ jint localDepth(JNIEnv *env, jthread thread, jobject reflectMethod,
 
   // verify range
   if (frames[0].location < start || frames[0].location > start + length) {
-    throwException(env, "java/lang/IllegalStateException",
-		   "Requested variable is not in range [%d-%d; cur=%d].",
+    throwException(env, "org/thobe/java/tooling/LocalNotInRangeException",
+		   "[%d-%d] (position in frame: %d).",
 		   start, start+length, frames[0].location);
     return -1;
   }
