@@ -4,6 +4,13 @@
 #include <stdarg.h>
 
 #define MOD_STATIC 0x00000008
+#define CheckEachCapability() do {				\
+    CheckCapability(can_tag_objects);				\
+    CheckCapability(can_access_local_variables);		\
+    CheckCapability(can_generate_frame_pop_events);		\
+    CheckCapability(can_get_source_file_name);			\
+    CheckCapability(can_get_line_numbers);			\
+  } while(0)
 
 typedef struct {
   jvmtiEnv *jvmti;
@@ -250,6 +257,7 @@ const char* decodeErrorCode(jvmtiError tiErr) {
     return NULL;
   }
 }
+#undef decodes
 
 void logError(const char *where, const char *what, jvmtiError tiErr)
 {
@@ -463,7 +471,7 @@ jobject createFrame(JNIEnv *env, jobject tools, jthread thread, jint totalDepth,
     }
     tiErr = (*(agent->jvmti))->Deallocate(agent->jvmti, (void*)locals);
     if (tiErr != JVMTI_ERROR_NONE) {
-      throwJvmtiException(env, "GetLocalVariableTable", tiErr);
+      throwJvmtiException(env, "Deallocate:GetLocalVariableTable", tiErr);
       return NULL;
     }
     
@@ -603,14 +611,9 @@ jboolean InitializeAgent(JavaVM *jvm) {
 							  &available);
 	if (err == JVMTI_ERROR_NONE) {
 	  
-	  // <CAPABILITIES>
-	  if (available.can_tag_objects)
-	    request.can_tag_objects = 1;
-	  if (available.can_access_local_variables)
-	    request.can_access_local_variables = 1;
-	  if (available.can_generate_frame_pop_events)
-	    request.can_generate_frame_pop_events = 1;
-	  // </CAPABILITIES>
+#define CheckCapability(TRAIT) if (available.TRAIT) request.TRAIT = 1
+	  CheckEachCapability();
+#undef CheckCapability
 	  
 	  err = (*(agent->jvmti))->AddCapabilities(agent->jvmti, &request);
 	}
@@ -714,31 +717,17 @@ Java_org_thobe_java_tooling_ToolingInterface_initialize0
     Set = (*env)->FindClass(env, "java/util/Set");
     add = (*env)->GetMethodID(env, Set, "add", "(Ljava/lang/Object;)Z");
     factory = (*env)->GetMethodID(env,tooling,"<init>","(ILjava/util/Set;)V");
-    
-    if (available.can_tag_objects) {
-      capability = getEnum(env, "org/thobe/java/tooling/Capability",
-			   "can_tag_objects");
-      if (!capability) return NULL;
-      (*env)->CallBooleanMethod(env, capabilities, add, capability);
-      (*env)->DeleteLocalRef(env, capability);
-      if ((*env)->ExceptionCheck(env)) return NULL;
-    }
-    if (available.can_access_local_variables) {
-      capability = getEnum(env, "org/thobe/java/tooling/Capability",
-			   "can_access_local_variables");
-      if (!capability) return NULL;
-      (*env)->CallBooleanMethod(env, capabilities, add, capability);
-      (*env)->DeleteLocalRef(env, capability);
-      if ((*env)->ExceptionCheck(env)) return NULL;
-    }
-    if (available.can_generate_frame_pop_events) {
-      capability = getEnum(env, "org/thobe/java/tooling/Capability",
-			   "can_generate_frame_pop_events");
-      if (!capability) return NULL;
-      (*env)->CallBooleanMethod(env, capabilities, add, capability);
-      (*env)->DeleteLocalRef(env, capability);
-      if ((*env)->ExceptionCheck(env)) return NULL;
-    }
+
+#define CheckCapability(TRAIT) do {					\
+      if (available.TRAIT) {						\
+	capability = getEnum(env,"org/thobe/java/tooling/Capability",#TRAIT); \
+	(*env)->CallBooleanMethod(env, capabilities, add, capability);	\
+	(*env)->DeleteLocalRef(env, capability);			\
+	if ((*env)->ExceptionCheck(env)) return NULL;			\
+      }									\
+    } while(0)
+    CheckEachCapability();
+#undef CheckCapability
 
     tiErr = (*(agent->jvmti))->GetVersionNumber(agent->jvmti, &version);
     if (tiErr != JVMTI_ERROR_NONE) {
@@ -821,7 +810,7 @@ Java_org_thobe_java_tooling_ToolingInterface_getCallFrame0
 }
 
 jint localDepth(JNIEnv *env, jthread thread, jobject reflectMethod,
-		jint height, jlong start, jint length)
+		jint height, jlong start, jint length, jlocation *position)
 {
   jvmtiError tiErr;
   jthread currentThread;
@@ -882,6 +871,7 @@ jint localDepth(JNIEnv *env, jthread thread, jobject reflectMethod,
 		   start, start+length, frames[0].location);
     return -1;
   }
+  if (position) *position = frames[0].location;
 
   return depth;
 }
@@ -895,7 +885,7 @@ Java_org_thobe_java_tooling_ToolingInterface_getLocal
 
   if (!verifyTool(env, this)) return NULL;
 
-  depth = localDepth(env, thread, reflectMethod, height, start, length);
+  depth = localDepth(env, thread, reflectMethod, height, start, length, NULL);
   if (depth < 0) return NULL;
 
   return getLocal(env, thread, type, depth, slot);
@@ -974,7 +964,7 @@ Java_org_thobe_java_tooling_ToolingInterface_setLocal
   jint depth;
 
   if (verifyTool(env, this)) {
-    depth = localDepth(env, thread, reflectMethod, height, start, length);
+    depth = localDepth(env, thread, reflectMethod, height, start, length, NULL);
     if (depth >= 0) {
       setLocal(env, thread, type, depth, slot, value);
     }
@@ -1074,4 +1064,73 @@ Java_org_thobe_java_tooling_ToolingInterface_retainedSize0
     return 0;
   }
   return size;
+}
+
+jint getLineNumber(JNIEnv *env, jobject reflectMethod, jlocation position)
+{
+  jvmtiError tiErr;
+  jmethodID method;
+  jint lnoTableSize;
+  jvmtiLineNumberEntry* lnoTable;
+  jint result, i;
+
+  method = (*env)->FromReflectedMethod(env, reflectMethod);
+  tiErr = (*(agent->jvmti))->GetLineNumberTable(agent->jvmti, method,
+					&lnoTableSize, &lnoTable);
+  if (tiErr != JVMTI_ERROR_NONE) {
+    if (tiErr != JVMTI_ERROR_ABSENT_INFORMATION &&
+        tiErr != JVMTI_ERROR_MUST_POSSESS_CAPABILITY ) {
+      throwJvmtiException(env, "GetLineNumberTable", tiErr);
+    }
+    return -1;
+  }
+  result = -1;
+  for (i = 0; i < lnoTableSize; i++) {
+    if (lnoTable[i].start_location <= position)
+      result = lnoTable[i].line_number;
+    else
+      break;
+  }
+  (*(agent->jvmti))->Deallocate(agent->jvmti, (void*)lnoTable);
+  return result;
+}
+
+JNIEXPORT jint JNICALL
+Java_org_thobe_java_tooling_ToolingInterface_detachedLineNumber
+(JNIEnv *env, jobject this, jobject reflectMethod, jlocation position)
+{
+  if (!verifyTool(env, this)) return -1;
+  return getLineNumber(env, reflectMethod, position);
+}
+
+JNIEXPORT jint JNICALL 
+Java_org_thobe_java_tooling_ToolingInterface_liveLineNumber
+(JNIEnv *env, jobject this, jthread thread, jobject reflectMethod, jint height)
+{
+  jlocation pos;
+  if (!verifyTool(env, this)) return -1;
+  if (-1==localDepth(env, thread, reflectMethod, height, 0, 0x7FFFFFFF, &pos))
+    return -1;
+  return getLineNumber(env, reflectMethod, pos);
+}
+
+JNIEXPORT jstring JNICALL
+Java_org_thobe_java_tooling_ToolingInterface_sourceFileOf
+(JNIEnv *env, jobject this, jclass aClass)
+{
+  jvmtiError tiErr;
+  char* className;
+  jstring result;
+  if (!verifyTool(env, this)) return NULL;
+  tiErr = (*(agent->jvmti))->GetSourceFileName(agent->jvmti,aClass,&className);
+  if (tiErr != JVMTI_ERROR_NONE) {
+    if (tiErr != JVMTI_ERROR_ABSENT_INFORMATION &&
+        tiErr != JVMTI_ERROR_MUST_POSSESS_CAPABILITY ) {
+      throwJvmtiException(env, "GetSourceFileName", tiErr);
+    }
+    return NULL;
+  }
+  result = (*env)->NewStringUTF(env, className);
+  (*(agent->jvmti))->Deallocate(agent->jvmti, (void*)className);
+  return result;
 }

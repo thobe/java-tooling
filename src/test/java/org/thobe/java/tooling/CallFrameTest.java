@@ -43,6 +43,40 @@ public class CallFrameTest
     }
 
     @Test
+    public void shouldBeAbleToConvertLiveCallFrameToStackTraceElement() throws Exception
+    {
+        // given
+        CallFrame frame = tools.getCallFrame( 0 );
+        StackTraceElement expected = lineDelta( currentLine(), +2 );
+        // when
+        StackTraceElement traceElement = frame.toStackTraceElement();
+        // then
+        assertEquals( expected, traceElement );
+    }
+
+    @Test
+    public void shouldBeAbleToConvertDetachedCallFrameToStackTraceElement() throws Exception
+    {
+        // given
+        CallFrame frame = method( "stuff" );
+        // when
+        StackTraceElement traceElement = frame.toStackTraceElement();
+        // then
+        assertEquals( frame.getLocal( "returnLine" ), traceElement );
+    }
+
+    private static StackTraceElement currentLine()
+    {
+        return Thread.currentThread().getStackTrace()[2];
+    }
+
+    private static StackTraceElement lineDelta( StackTraceElement element, int delta )
+    {
+        return new StackTraceElement( element.getClassName(), element.getMethodName(), element.getFileName(),
+                                      element.getLineNumber() + delta );
+    }
+
+    @Test
     public void shouldAccessLiveCallFrameOfCurrentMethod() throws Exception
     {
         // given
@@ -284,7 +318,8 @@ public class CallFrameTest
         // then
         catch ( NoSuchElementException e )
         {
-            assertEquals( "The local variable 'notInRange' is out of range [40-44] (position in frame: 101).", e.getMessage() );
+            assertEquals( "The local variable 'notInRange' is out of range [43-48] (position in frame: 115).",
+                          e.getMessage() );
         }
     }
 
@@ -392,6 +427,7 @@ public class CallFrameTest
 
     private CallFrame method( String value )
     {
+        StackTraceElement returnLine = null;
         assertNotNull( value );
         for ( int i = 0; i < value.length(); i++ )
         {
@@ -403,9 +439,11 @@ public class CallFrameTest
             String i = doNotInline( "" + j );
             if ( !i.isEmpty() )
             {
+                returnLine = lineDelta( currentLine(), +1 );
                 return tools.getCallFrame( 0 );
             }
         }
+        assertNotNull( returnLine );
         return tools.getCallFrame( 0 );
     }
 

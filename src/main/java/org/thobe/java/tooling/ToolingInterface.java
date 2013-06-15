@@ -251,6 +251,16 @@ public class ToolingInterface
         }
     }
 
+    // stack frame conversion
+
+    native int detachedLineNumber( Method method, long position );
+
+    native int liveLineNumber( Thread thread, Method method, int height );
+
+    native String sourceFileOf( Class<?> aClass );
+
+    // conversion methods - used from native code
+
     @SuppressWarnings("unused"/*called from native code*/)
     Object boxBool( boolean value )
     {

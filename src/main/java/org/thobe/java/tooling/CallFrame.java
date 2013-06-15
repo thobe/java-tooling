@@ -1,6 +1,7 @@
 package org.thobe.java.tooling;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.NoSuchElementException;
 
 import static java.lang.String.format;
@@ -144,5 +145,33 @@ public final class CallFrame
     {
         this.position = position;
         this.locals = locals == null ? NO_OBJECTS : locals;
+    }
+
+    public StackTraceElement toStackTraceElement()
+    {
+        Class<?> theClass = method.getDeclaringClass();
+        return new StackTraceElement( theClass.getName(), method.getName(), tools.sourceFileOf( theClass ), lineNo() );
+    }
+
+    private int lineNo()
+    {
+        if ( Modifier.isNative( method.getModifiers() ) )
+        {
+            return -2;
+        }
+        else
+        {
+            synchronized ( this )
+            {
+                if ( locals != null )
+                {
+                    return tools.detachedLineNumber( method, position );
+                }
+                else
+                {
+                    return tools.liveLineNumber( thread, method, height );
+                }
+            }
+        }
     }
 }
