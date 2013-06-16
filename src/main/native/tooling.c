@@ -8,6 +8,7 @@
     CheckCapability(can_tag_objects);				\
     CheckCapability(can_access_local_variables);		\
     CheckCapability(can_generate_frame_pop_events);		\
+    /*CheckCapability(can_suspend);*/				\
     CheckCapability(can_get_source_file_name);			\
     CheckCapability(can_get_line_numbers);			\
   } while(0)
@@ -43,6 +44,7 @@ typedef struct {
 } AgentData;
 
 static AgentData *agent = NULL;
+#define JVMTI(Method, ...) (*(agent->jvmti))->Method(agent->jvmti, __VA_ARGS__)
 
 jboolean InitializeJNI(JNIEnv *env, jclass tools) {
   jmethodID m;
@@ -181,14 +183,19 @@ jint throwException(JNIEnv *env, const char *name, const char *format, ...) {
   char message[128];
   va_list args;
 
-  va_start(args, format);
-  {
-    vsprintf(message, format, args);
-  }
-  va_end(args);
-
   clazz = (*env)->FindClass(env, name);
-  return (*env)->ThrowNew(env, clazz, message);
+
+  if (format) {
+    va_start(args, format);
+    {
+      vsprintf(message, format, args);
+    }
+    va_end(args);
+
+    return (*env)->ThrowNew(env, clazz, message);
+  } else {
+    return (*env)->ThrowNew(env, clazz, NULL);
+  }
 }
 
 jboolean verifyTool(JNIEnv *env, jobject tools) {
@@ -425,12 +432,13 @@ jobjectArray getAllLocals(JNIEnv *env, jthread thread, jint depth,
 
 jobject createFrame(JNIEnv *env, jobject tools, jthread thread, jint totalDepth,
 		    jint depth, jboolean live, jmethodID method,
-		    jlocation location,jboolean get_locals,jboolean isNative) {
+		    jlocation location, jboolean get_locals) {
   jvmtiError tiErr;
   jvmtiLocalVariableEntry *locals;
   jint count;
   jint i;
   jboolean isStatic;
+  jboolean isNative;
   jobjectArray variables;
   jobjectArray lvars;
   jobject var;
@@ -441,10 +449,18 @@ jobject createFrame(JNIEnv *env, jobject tools, jthread thread, jint totalDepth,
 
   lvars = NULL; // initialize
 
+  tiErr = JVMTI(IsMethodNative, method, &isNative);
+  if (tiErr != JVMTI_ERROR_NONE) {
+    throwJvmtiException(env, "IsMethodNative", tiErr);
+    return NULL;
+  }
+
   if (get_locals && !isNative) {
-    tiErr = (*(agent->jvmti))->GetLocalVariableTable(agent->jvmti, method,
-						     &count, &locals);
-    if (tiErr != JVMTI_ERROR_NONE) {
+    tiErr = JVMTI(GetLocalVariableTable, method, &count, &locals);
+    if (tiErr == JVMTI_ERROR_ABSENT_INFORMATION) {
+      count = 0;
+      locals = NULL;
+    } else if (tiErr != JVMTI_ERROR_NONE) {
       throwJvmtiException(env, "GetLocalVariableTable", tiErr);
       return NULL;
     }
@@ -453,7 +469,7 @@ jobject createFrame(JNIEnv *env, jobject tools, jthread thread, jint totalDepth,
     for (i = 0; i < count; i++) {
       var = createLocal(env, tools, locals[i]);
       if (!var) {
-	(*(agent->jvmti))->Deallocate(agent->jvmti, (void*)locals);
+	JVMTI(Deallocate, (void*)locals);
 	// don't care about the error from Deallocate, there is an error already
 	return NULL;
       }
@@ -464,12 +480,12 @@ jobject createFrame(JNIEnv *env, jobject tools, jthread thread, jint totalDepth,
     if (!live) {
       lvars = getAllLocals(env, thread, depth, location, count, locals);
       if (!lvars) {
-	(*(agent->jvmti))->Deallocate(agent->jvmti, (void*)locals);
+	JVMTI(Deallocate, (void*)locals);
 	// don't care about the error from Deallocate, there is an error already
 	return NULL;
       }
     }
-    tiErr = (*(agent->jvmti))->Deallocate(agent->jvmti, (void*)locals);
+    tiErr = JVMTI(Deallocate, (void*)locals);
     if (tiErr != JVMTI_ERROR_NONE) {
       throwJvmtiException(env, "Deallocate:GetLocalVariableTable", tiErr);
       return NULL;
@@ -791,13 +807,6 @@ Java_org_thobe_java_tooling_ToolingInterface_getCallFrame0
 
   if (count == 0) return NULL; // null returned == stack not that deep
 
-  tiErr = (*(agent->jvmti))->IsMethodNative(agent->jvmti, frames->method,
-					    &isNative);
-  if (tiErr != JVMTI_ERROR_NONE) {
-    throwJvmtiException(env, "IsMethodNative", tiErr);
-    return NULL;
-  }
-
   // get the current total stack depth 'count'
   tiErr = (*(agent->jvmti))->GetFrameCount(agent->jvmti, thread, &count);
   if (tiErr != JVMTI_ERROR_NONE) {
@@ -806,8 +815,59 @@ Java_org_thobe_java_tooling_ToolingInterface_getCallFrame0
   }
 
   return createFrame(env, this, thread, count, depth, live, 
-		     frames->method, frames->location, locals, isNative);
+		     frames->method, frames->location, locals);
 }
+
+JNIEXPORT jobjectArray JNICALL
+Java_org_thobe_java_tooling_ToolingInterface_getCallStack0
+(JNIEnv *env, jobject this, jthread thread, jint startDepth,
+ jboolean locals, jboolean live)
+{
+  jvmtiError tiErr;
+  jvmtiFrameInfo *frames;
+  jint depth, count;
+  jobjectArray result;
+  jobject frame;
+
+  if (!verifyTool(env, this)) return NULL;
+
+  tiErr = JVMTI(GetFrameCount, thread, &count);
+  if (tiErr != JVMTI_ERROR_NONE) {
+    throwJvmtiException(env, "GetFrameCount", tiErr);
+    return NULL;
+  }
+  depth = (count - startDepth) << 1;
+  tiErr = JVMTI(Allocate,depth*sizeof(jvmtiFrameInfo),(unsigned char**)&frames);
+  if (tiErr != JVMTI_ERROR_NONE) {
+    throwJvmtiException(env, "Allocate", tiErr);
+    return NULL;
+  }
+  tiErr = JVMTI(GetStackTrace, thread, startDepth, depth, frames, &depth);
+  if (tiErr != JVMTI_ERROR_NONE) {
+    JVMTI(Deallocate, (void*)frames);
+    throwJvmtiException(env, "GetStackTrace", tiErr);
+    return NULL;
+  }
+  if ((result = (*env)->NewObjectArray(env, depth, agent->CallFrame, NULL))) {
+    for (depth--; depth >= 0; depth--) {
+      frame = createFrame(env, this, thread, count, depth + startDepth, live, 
+                          frames[depth].method, frames[depth].location, locals);
+      if (!frame) {
+	result = NULL;
+	break;
+      }
+      (*env)->SetObjectArrayElement(env, result, depth, frame);
+      (*env)->DeleteLocalRef(env, frame);
+      if ((*env)->ExceptionCheck(env)) {
+        result = NULL;
+	break;
+      }
+    }
+  }
+  JVMTI(Deallocate, (void*)frames);
+  return result;
+}
+
 
 jint localDepth(JNIEnv *env, jthread thread, jobject reflectMethod,
 		jint height, jlong start, jint length, jlocation *position)
@@ -906,7 +966,7 @@ void setLocal(JNIEnv *env, jthread thread, jchar type, jint depth, jint slot,
     tiErr = (*(agent->jvmti))->SetLocalObject(agent->jvmti, thread,
 					      depth, slot, value);
     if (tiErr == JVMTI_ERROR_TYPE_MISMATCH) {
-      throwException(env,"java/lang/ClassCastException","");
+      throwException(env,"java/lang/ClassCastException",NULL);
       return;
     }
     break;

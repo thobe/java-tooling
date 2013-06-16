@@ -159,7 +159,7 @@ public class ToolingInterface
             throw new IllegalArgumentException(
                     String.format( "Illegal depth [%d] must be greater than or equal to 0.", depth ) );
         }
-        CallFrame frame = getCallFrame0( Thread.currentThread(), depth + 2,
+        CallFrame frame = getCallFrame0( Thread.currentThread(), depth + 2/*getCallFrame0() and getCallFrame()*/,
                                          capabilities.contains( can_access_local_variables ),
                                          capabilities.contains( can_generate_frame_pop_events ) );
         if ( frame == null )
@@ -170,7 +170,16 @@ public class ToolingInterface
         return frame;
     }
 
+    public CallFrame[] getCallStack()
+    {
+        return getCallStack0( Thread.currentThread(), 2/*getCallStack0() and getCallStack()*/,
+                              capabilities.contains( can_access_local_variables ),
+                              capabilities.contains( can_generate_frame_pop_events ) );
+    }
+
     private native CallFrame getCallFrame0( Thread thread, int depth, boolean locals, boolean live );
+
+    private native CallFrame[] getCallStack0( Thread thread, int startDepth, boolean locals, boolean live );
 
     native Object getLocal( Thread thread, Method method, int height, long start, int length, int slot, char type )
             throws LocalNotInRangeException;
