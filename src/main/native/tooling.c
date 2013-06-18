@@ -324,28 +324,23 @@ jobject getLocal(JNIEnv *env,jthread thread,jchar type,jint depth,jint slot) {
   switch(type) {
   case '[': // array (is an Object)
   case 'L': // Object
-    tiErr = (*(agent->jvmti))->GetLocalObject(agent->jvmti, thread,
-					      depth, slot, &result);
+    tiErr = JVMTI(GetLocalObject, thread, depth, slot, &result);
     break;
   case 'J': // long
-    tiErr = (*(agent->jvmti))->GetLocalLong(agent->jvmti, thread,
-					    depth, slot, &jValue);
+    tiErr = JVMTI(GetLocalLong, thread, depth, slot, &jValue);
     break;
   case 'F': // float
-    tiErr = (*(agent->jvmti))->GetLocalFloat(agent->jvmti, thread,
-					     depth, slot, &fValue);
+    tiErr = JVMTI(GetLocalFloat, thread, depth, slot, &fValue);
     break;
   case 'D': // double
-    tiErr = (*(agent->jvmti))->GetLocalDouble(agent->jvmti, thread,
-					      depth, slot, &dValue);
+    tiErr = JVMTI(GetLocalDouble, thread, depth, slot, &dValue);
     break;
   case 'I': // int
   case 'S': // short
   case 'C': // char
   case 'B': // byte
   case 'Z': // boolean
-    tiErr = (*(agent->jvmti))->GetLocalInt(agent->jvmti, thread,
-					   depth, slot, &iValue);
+    tiErr = JVMTI(GetLocalInt, thread, depth, slot, &iValue);
     break;
   default:
     throwException(env, "java/lang/IllegalArgumentException",
@@ -497,7 +492,7 @@ jobject createFrame(JNIEnv *env, jobject tools, jthread thread, jint totalDepth,
     lvars = variables; // use the same empty array for the detached locals
   }
 
-  tiErr = (*(agent->jvmti))->GetMethodModifiers(agent->jvmti, method, &i);
+  tiErr = JVMTI(GetMethodModifiers, method, &i);
   if (tiErr != JVMTI_ERROR_NONE) {
     throwJvmtiException(env, "GetMethodModifiers", tiErr);
     return NULL;
@@ -507,14 +502,12 @@ jobject createFrame(JNIEnv *env, jobject tools, jthread thread, jint totalDepth,
   tiErr = JVMTI_ERROR_NONE;
   if (get_locals) {
 #ifdef __JVMTI_VERSION_1_2
-    tiErr = (*(agent->jvmti))->GetLocalInstance(agent->jvmti, thread,
-  						depth, &this);
+    tiErr = JVMTI(GetLocalInstance, thread, depth, &this);
 #else
     if (isStatic) {
       this = NULL;
     } else {
-      tiErr = (*(agent->jvmti))->GetLocalObject(agent->jvmti, thread,
-						depth, 0, &this);
+      tiErr = JVMTI(GetLocalObject, thread, depth, 0, &this);
     }
 #endif
   } else {
@@ -525,8 +518,7 @@ jobject createFrame(JNIEnv *env, jobject tools, jthread thread, jint totalDepth,
     return NULL;
   }
 
-  tiErr = (*(agent->jvmti))->GetMethodDeclaringClass(agent->jvmti, method,
-						     &declaringClass);
+  tiErr = JVMTI(GetMethodDeclaringClass, method, &declaringClass);
   if (tiErr != JVMTI_ERROR_NONE) {
     throwJvmtiException(env, "GetMethodDeclaringClass", tiErr);
     (*env)->DeleteLocalRef(env, variables);
@@ -566,13 +558,11 @@ OnFramePop(jvmtiEnv *jvmti, JNIEnv* env, jthread thread, jmethodID method,
   if (tiErr != JVMTI_ERROR_NONE) {
     logError("OnFramePop", "GetFrameCount", tiErr);
   } else {
-    tiErr = (*(agent->jvmti))->GetFrameLocation(agent->jvmti, thread, 0,
-                                                &found, &location);
+    tiErr = JVMTI(GetFrameLocation, thread, 0, &found, &location);
     if (tiErr != JVMTI_ERROR_NONE || method != found) {
       logError("OnFramePop", "GetFrameLocation", tiErr);
     } else {
-      tiErr = (*(agent->jvmti))->GetLocalVariableTable(agent->jvmti, method,
-                                                       &count, &locals);
+      tiErr = JVMTI(GetLocalVariableTable, method, &count, &locals);
       if (tiErr != JVMTI_ERROR_NONE) {
 	logError("OnFramePop", "GetLocalVariableTable", tiErr);
       } else {
@@ -605,7 +595,7 @@ jvmtiEnv *JvmToolingInterface(JavaVM *jvm) {
   return jvmti;
 }
 
-jboolean InitializeAgent(JavaVM *jvm) {
+jboolean InitializeAgent(JavaVM *jvm, const char *options) {
   static AgentData data;
 
   jvmtiCapabilities available;
@@ -621,32 +611,26 @@ jboolean InitializeAgent(JavaVM *jvm) {
   if (agent->jvmti) {
     if (!agent->tools) {
       // Initialize capabilities
-      err = (*(agent->jvmti))->GetCapabilities(agent->jvmti, &request);
+      err = JVMTI(GetCapabilities, &request);
       if (err == JVMTI_ERROR_NONE) {
-	err = (*(agent->jvmti))->GetPotentialCapabilities(agent->jvmti,
-							  &available);
+	err = JVMTI(GetPotentialCapabilities, &available);
 	if (err == JVMTI_ERROR_NONE) {
-	  
 #define CheckCapability(TRAIT) if (available.TRAIT) request.TRAIT = 1
 	  CheckEachCapability();
 #undef CheckCapability
-	  
-	  err = (*(agent->jvmti))->AddCapabilities(agent->jvmti, &request);
+	  err = JVMTI(AddCapabilities, &request);
 	}
       }
       if (err != JVMTI_ERROR_NONE) {
 	logError("InitializeAgent","capability setup", err);
       } else {
 	callbacks.FramePop = &OnFramePop;
-	err = (*(agent->jvmti))->SetEventCallbacks(agent->jvmti, &callbacks,
-						   sizeof(callbacks));
+	err = JVMTI(SetEventCallbacks, &callbacks, sizeof(callbacks));
 	if (err != JVMTI_ERROR_NONE) {
 	  logError("InitializeAgent", "SetEventCallbacks", err);
 	} else if (available.can_generate_frame_pop_events) {
-	  err=(*(agent->jvmti))->SetEventNotificationMode(agent->jvmti,
-							  JVMTI_ENABLE,
-							  JVMTI_EVENT_FRAME_POP,
-							  NULL);
+	  err = JVMTI(SetEventNotificationMode, JVMTI_ENABLE,
+		      JVMTI_EVENT_FRAME_POP, NULL);
 	  if (err != JVMTI_ERROR_NONE) {
 	    logError("InitializeAgent", "SetEventNotificationMode", err);
 	  }
@@ -665,7 +649,7 @@ jboolean InitializeAgent(JavaVM *jvm) {
 JNIEXPORT jint JNICALL 
 Agent_OnLoad(JavaVM *jvm, char *options, void *reserved)
 {
-  if (!InitializeAgent(jvm)) {
+  if (!InitializeAgent(jvm, options)) {
     fprintf(stderr, "AGENT ERROR: Could not load JVM Tooling Interface.\n");
   }
   return 0;
@@ -712,7 +696,7 @@ Java_org_thobe_java_tooling_ToolingInterface_initialize0
     return NULL;
   }
 
-  if (!InitializeAgent(jvm)) {
+  if (!InitializeAgent(jvm, "")) {
     throwException(env, "java/lang/IllegalStateException",
 		   "Could not initialize the agent.");
     return NULL;
@@ -720,7 +704,7 @@ Java_org_thobe_java_tooling_ToolingInterface_initialize0
 
   if (!agent->tools) {
 
-    tiErr = (*(agent->jvmti))->GetCapabilities(agent->jvmti, &available);
+    tiErr = JVMTI(GetCapabilities, &available);
     if (tiErr != JVMTI_ERROR_NONE) {
       throwJvmtiException(env, "GetCapabilities", tiErr);
       return NULL;
@@ -745,7 +729,7 @@ Java_org_thobe_java_tooling_ToolingInterface_initialize0
     CheckEachCapability();
 #undef CheckCapability
 
-    tiErr = (*(agent->jvmti))->GetVersionNumber(agent->jvmti, &version);
+    tiErr = JVMTI(GetVersionNumber, &version);
     if (tiErr != JVMTI_ERROR_NONE) {
       throwJvmtiException(env, "GetVersionNumber", tiErr);
       return NULL;
@@ -780,7 +764,7 @@ Java_org_thobe_java_tooling_ToolingInterface_getCallFrame0
   if (!verifyTool(env, this)) return NULL;
 
   if (live) {
-    tiErr = (*(agent->jvmti))->NotifyFramePop(agent->jvmti, thread, depth);
+    tiErr = JVMTI(NotifyFramePop, thread, depth);
     switch (tiErr) {
     case JVMTI_ERROR_NONE:
       break; // all is well
@@ -796,8 +780,7 @@ Java_org_thobe_java_tooling_ToolingInterface_getCallFrame0
     }
   }
 
-  tiErr = (*(agent->jvmti))->GetStackTrace(agent->jvmti, thread, depth, 1,
-					   frames, &count);
+  tiErr = JVMTI(GetStackTrace, thread, depth, 1, frames, &count);
   if (tiErr != JVMTI_ERROR_NONE) {
     if (tiErr != JVMTI_ERROR_ILLEGAL_ARGUMENT) {
       throwJvmtiException(env, "GetStackTrace", tiErr);
@@ -808,7 +791,7 @@ Java_org_thobe_java_tooling_ToolingInterface_getCallFrame0
   if (count == 0) return NULL; // null returned == stack not that deep
 
   // get the current total stack depth 'count'
-  tiErr = (*(agent->jvmti))->GetFrameCount(agent->jvmti, thread, &count);
+  tiErr = JVMTI(GetFrameCount, thread, &count);
   if (tiErr != JVMTI_ERROR_NONE) {
     throwJvmtiException(env, "GetFrameCount", tiErr);
     return NULL;
@@ -881,7 +864,7 @@ jint localDepth(JNIEnv *env, jthread thread, jobject reflectMethod,
 
   method = (*env)->FromReflectedMethod(env, reflectMethod);
 
-  tiErr = (*(agent->jvmti))->GetCurrentThread(agent->jvmti, &currentThread);
+  tiErr = JVMTI(GetCurrentThread, &currentThread);
   if (tiErr != JVMTI_ERROR_NONE) {
     throwJvmtiException(env, "GetCurrentThread", tiErr);
     return -1;
@@ -894,7 +877,7 @@ jint localDepth(JNIEnv *env, jthread thread, jobject reflectMethod,
   }
 
   // Compute the stack depth
-  tiErr = (*(agent->jvmti))->GetFrameCount(agent->jvmti, thread, &depth);
+  tiErr = JVMTI(GetFrameCount, thread, &depth);
   if (tiErr != JVMTI_ERROR_NONE) {
     throwJvmtiException(env, "GetFrameCount", tiErr);
     return -1;
@@ -908,8 +891,7 @@ jint localDepth(JNIEnv *env, jthread thread, jobject reflectMethod,
   }
 
   // Verify that the method at that depth matches the expected
-  tiErr = (*(agent->jvmti))->GetStackTrace(agent->jvmti, thread, depth, 1,
-					   frames, &count);
+  tiErr = JVMTI(GetStackTrace, thread, depth, 1, frames, &count);
   if (tiErr != JVMTI_ERROR_NONE && tiErr != JVMTI_ERROR_ILLEGAL_ARGUMENT) {
     throwJvmtiException(env, "GetStackTrace", tiErr);
     return -1;
@@ -963,8 +945,7 @@ void setLocal(JNIEnv *env, jthread thread, jchar type, jint depth, jint slot,
   switch(type) {
   case '[': // array (is an Object)
   case 'L': // Object
-    tiErr = (*(agent->jvmti))->SetLocalObject(agent->jvmti, thread,
-					      depth, slot, value);
+    tiErr = JVMTI(SetLocalObject, thread, depth, slot, value);
     if (tiErr == JVMTI_ERROR_TYPE_MISMATCH) {
       throwException(env,"java/lang/ClassCastException",NULL);
       return;
@@ -973,20 +954,17 @@ void setLocal(JNIEnv *env, jthread thread, jchar type, jint depth, jint slot,
   case 'J': // long
     jValue = (*env)->CallLongMethod(env,agent->tools,agent->unboxLong,value);
     if ((*env)->ExceptionCheck(env)) return; // unboxing could throw NPE
-    tiErr = (*(agent->jvmti))->SetLocalLong(agent->jvmti, thread,
-					    depth, slot, jValue);
+    tiErr = JVMTI(SetLocalLong, thread, depth, slot, jValue);
     break;
   case 'F': // float
     fValue = (*env)->CallFloatMethod(env,agent->tools,agent->unboxFloat,value);
     if ((*env)->ExceptionCheck(env)) return; // unboxing could throw NPE
-    tiErr = (*(agent->jvmti))->SetLocalFloat(agent->jvmti, thread,
-					     depth, slot, fValue);
+    tiErr = JVMTI(SetLocalFloat, thread, depth, slot, fValue);
     break;
   case 'D': // double
     dValue=(*env)->CallDoubleMethod(env,agent->tools,agent->unboxDouble,value);
     if ((*env)->ExceptionCheck(env)) return; // unboxing could throw NPE
-    tiErr = (*(agent->jvmti))->SetLocalDouble(agent->jvmti, thread,
-					      depth, slot, dValue);
+    tiErr = JVMTI(SetLocalDouble, thread, depth, slot, dValue);
     break;
   case 'I': // int
     iValue = (*env)->CallIntMethod(env,agent->tools,agent->unboxInt,value);
@@ -1004,8 +982,7 @@ void setLocal(JNIEnv *env, jthread thread, jchar type, jint depth, jint slot,
     iValue = (*env)->CallBooleanMethod(env,agent->tools,agent->unboxBool,value);
   SET_LOCAL_INT:
     if ((*env)->ExceptionCheck(env)) return; // unboxing could throw NPE
-    tiErr = (*(agent->jvmti))->SetLocalInt(agent->jvmti, thread,
-					   depth, slot, iValue);
+    tiErr = JVMTI(SetLocalInt, thread, depth, slot, iValue);
     break;
   default:
     throwException(env, "java/lang/IllegalArgumentException",
@@ -1050,29 +1027,27 @@ Java_org_thobe_java_tooling_ToolingInterface_getLiveInstances0
 
   if (!verifyTool(env, this)) return NULL;
 
-  tiErr=(*(agent->jvmti))->IterateOverInstancesOfClass(agent->jvmti, type,
-						       JVMTI_HEAP_OBJECT_EITHER,
-						       &tag_object, &tag);
+  tiErr=JVMTI(IterateOverInstancesOfClass, type, JVMTI_HEAP_OBJECT_EITHER,
+	      &tag_object, &tag);
   if (tiErr != JVMTI_ERROR_NONE) {
     throwJvmtiException(env, "IterateOverInstancesOfClass", tiErr);
     return NULL;
   }
 
-  tiErr=(*(agent->jvmti))->GetObjectsWithTags(agent->jvmti, 1, &tag, &count,
-					      &objects,&tags);
+  tiErr=JVMTI(GetObjectsWithTags, 1, &tag, &count, &objects, &tags);
   if (tiErr != JVMTI_ERROR_NONE) {
     throwJvmtiException(env, "GetObjectsWithTags", tiErr);
     return NULL;
   }
-  (*(agent->jvmti))->Deallocate(agent->jvmti, (void*)tags);
+  JVMTI(Deallocate, (void*)tags);
 
   result = (*env)->NewObjectArray(env, count, type, NULL);
   for (i=0; i < count; i++) {
-    (*(agent->jvmti))->SetTag(agent->jvmti, objects[i], 0);
+    JVMTI(SetTag, objects[i], 0);
     (*env)->SetObjectArrayElement(env, result, i, objects[i]);
   }
 
-  (*(agent->jvmti))->Deallocate(agent->jvmti, (void*)objects);
+  JVMTI(Deallocate, (void*)objects);
 
   return result;
 }
@@ -1084,7 +1059,7 @@ Java_org_thobe_java_tooling_ToolingInterface_sizeOf
   jvmtiError tiErr;
   jlong size;
   if (!verifyTool(env, this) || !object) return 0;
-  tiErr = (*(agent->jvmti))->GetObjectSize(agent->jvmti, object, &size);
+  tiErr = JVMTI(GetObjectSize, object, &size);
   if (tiErr != JVMTI_ERROR_NONE) {
     throwJvmtiException(env, "GetObjectSize", tiErr);
     return 0;
@@ -1110,15 +1085,12 @@ Java_org_thobe_java_tooling_ToolingInterface_retainedSize0
   jvmtiError tiErr;
   jlong size;
   if (!verifyTool(env, this) || !object) return 0;
-  tiErr = (*(agent->jvmti))->GetObjectSize(agent->jvmti, object, &size);
+  tiErr = JVMTI(GetObjectSize, object, &size);
   if (tiErr != JVMTI_ERROR_NONE) {
     throwJvmtiException(env, "GetObjectSize", tiErr);
     return 0;
   }
-  tiErr = (*(agent->jvmti))->IterateOverObjectsReachableFromObject(agent->jvmti,
-								   object,
-								   &sum_size,
-								   &size);
+  tiErr = JVMTI(IterateOverObjectsReachableFromObject, object,&sum_size,&size);
   if (tiErr != JVMTI_ERROR_NONE) {
     throwJvmtiException(env, "IterateOverObjectsReachableFromObject", tiErr);
     return 0;
@@ -1135,8 +1107,7 @@ jint getLineNumber(JNIEnv *env, jobject reflectMethod, jlocation position)
   jint result, i;
 
   method = (*env)->FromReflectedMethod(env, reflectMethod);
-  tiErr = (*(agent->jvmti))->GetLineNumberTable(agent->jvmti, method,
-					&lnoTableSize, &lnoTable);
+  tiErr = JVMTI(GetLineNumberTable, method, &lnoTableSize, &lnoTable);
   if (tiErr != JVMTI_ERROR_NONE) {
     if (tiErr != JVMTI_ERROR_ABSENT_INFORMATION &&
         tiErr != JVMTI_ERROR_MUST_POSSESS_CAPABILITY ) {
@@ -1151,7 +1122,7 @@ jint getLineNumber(JNIEnv *env, jobject reflectMethod, jlocation position)
     else
       break;
   }
-  (*(agent->jvmti))->Deallocate(agent->jvmti, (void*)lnoTable);
+  JVMTI(Deallocate, (void*)lnoTable);
   return result;
 }
 
@@ -1182,7 +1153,7 @@ Java_org_thobe_java_tooling_ToolingInterface_sourceFileOf
   char* className;
   jstring result;
   if (!verifyTool(env, this)) return NULL;
-  tiErr = (*(agent->jvmti))->GetSourceFileName(agent->jvmti,aClass,&className);
+  tiErr = JVMTI(GetSourceFileName,aClass,&className);
   if (tiErr != JVMTI_ERROR_NONE) {
     if (tiErr != JVMTI_ERROR_ABSENT_INFORMATION &&
         tiErr != JVMTI_ERROR_MUST_POSSESS_CAPABILITY ) {
@@ -1191,6 +1162,6 @@ Java_org_thobe_java_tooling_ToolingInterface_sourceFileOf
     return NULL;
   }
   result = (*env)->NewStringUTF(env, className);
-  (*(agent->jvmti))->Deallocate(agent->jvmti, (void*)className);
+  JVMTI(Deallocate, (void*)className);
   return result;
 }
