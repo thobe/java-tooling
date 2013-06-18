@@ -19,7 +19,6 @@ import static org.thobe.java.tooling.Capability.can_generate_frame_pop_events;
 public class ToolingInterface
 {
     private static final Logger log = Logger.getLogger( ToolingInterface.class.getName() );
-    private static final Permission PERMISSION = new RuntimePermission( ToolingInterface.class.getName() );
     private static boolean dynlibLoaded = false;
     private final Set<Capability> capabilities;
     private final FrameManager frameManager = new FrameManager();
@@ -256,7 +255,7 @@ public class ToolingInterface
         SecurityManager sm = System.getSecurityManager();
         if ( sm != null )
         {
-            sm.checkPermission( PERMISSION );
+            sm.checkPermission( new RuntimePermission( ToolingInterface.class.getName() ) );
         }
     }
 
